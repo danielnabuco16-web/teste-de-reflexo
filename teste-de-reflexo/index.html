@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teste de Reflexo</title>
+<style>
+  :root {
+    --bg: #12141c;
+    --panel: #1c1f2b;
+    --text: #eef0f6;
+    --muted: #8b90a6;
+    --idle: #3a3f56;
+    --wait: #c0392b;
+    --go: #27ae60;
+    --accent: #6c8dff;
+    --gold: #f4c542;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    background: radial-gradient(circle at 50% 20%, #1a1d29, var(--bg));
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 24px;
+  }
+  h1 {
+    font-size: 1.4rem;
+    font-weight: 600;
+    margin: 0 0 4px;
+    letter-spacing: 0.02em;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-bottom: 24px;
+    text-align: center;
+  }
+  .stage {
+    width: min(480px, 90vw);
+    height: min(480px, 60vh);
+    border-radius: 24px;
+    background: var(--idle);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s ease, transform 0.08s ease;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    text-align: center;
+    padding: 24px;
+  }
+  .stage:active { transform: scale(0.98); }
+  .stage.wait { background: var(--wait); }
+  .stage.go { background: var(--go); }
+  .stage.early { background: #8e2f2f; }
+  .stage-text {
+    font-size: 1.6rem;
+    font-weight: 700;
+  }
+  .stage-sub {
+    margin-top: 10px;
+    font-size: 1rem;
+    color: rgba(255,255,255,0.85);
+    font-weight: 400;
+  }
+  .result {
+    font-size: 3.2rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+  .panel {
+    width: min(480px, 90vw);
+    margin-top: 20px;
+    display: flex;
+    justify-content: space-between;
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 16px 20px;
+  }
+  .stat { text-align: center; flex: 1; }
+  .stat-label {
+    color: var(--muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+  }
+  .stat-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+  }
+  .stat-value.gold { color: var(--gold); }
+  .history {
+    width: min(480px, 90vw);
+    margin-top: 14px;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .chip {
+    background: var(--panel);
+    border-radius: 10px;
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  .reset {
+    margin-top: 18px;
+    background: none;
+    border: 1px solid var(--muted);
+    color: var(--muted);
+    padding: 8px 16px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+  .reset:hover { color: var(--text); border-color: var(--text); }
+</style>
+</head>
+<body>
+  <h1>⚡ Teste de Reflexo</h1>
+  <div class="subtitle">Clique quando a tela ficar verde. Não clique antes da hora!</div>
+
+  <div class="stage idle" id="stage">
+    <div class="stage-text" id="stageText">Clique para começar</div>
+    <div class="stage-sub" id="stageSub">Espere o verde aparecer</div>
+  </div>
+
+  <div class="panel">
+    <div class="stat">
+      <div class="stat-label">Recorde</div>
+      <div class="stat-value gold" id="best">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Última</div>
+      <div class="stat-value" id="last">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Média (5)</div>
+      <div class="stat-value" id="avg">—</div>
+    </div>
+  </div>
+
+  <div class="history" id="history"></div>
+
+  <button class="reset" id="resetBtn">Zerar recorde</button>
+
+<script>
+(function () {
+  const stage = document.getElementById('stage');
+  const stageText = document.getElementById('stageText');
+  const stageSub = document.getElementById('stageSub');
+  const bestEl = document.getElementById('best');
+  const lastEl = document.getElementById('last');
+  const avgEl = document.getElementById('avg');
+  const historyEl = document.getElementById('history');
+  const resetBtn = document.getElementById('resetBtn');
+
+  const STORAGE_KEY = 'reflex-test-scores';
+  let state = 'idle';
+  let timeoutId = null;
+  let goTime = 0;
+  let scores = loadScores();
+
+  function loadScores() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveScores() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(scores));
+    } catch (e) {}
+  }
+
+  function render() {
+    const best = scores.length ? Math.min(...scores) : null;
+    bestEl.textContent = best !== null ? best + ' ms' : '—';
+    lastEl.textContent = scores.length ? scores[scores.length - 1] + ' ms' : '—';
+    if (scores.length) {
+      const last5 = scores.slice(-5);
+      const avg = Math.round(last5.reduce((a, b) => a + b, 0) / last5.length);
+      avgEl.textContent = avg + ' ms';
+    } else {
+      avgEl.textContent = '—';
+    }
+    historyEl.innerHTML = scores.slice(-8).reverse()
+      .map(s => `<div class="chip">${s} ms</div>`).join('');
+  }
+
+  function setStage(cls, text, sub) {
+    stage.className = 'stage ' + cls;
+    stageText.textContent = text;
+    stageSub.textContent = sub || '';
+  }
+
+  function startRound() {
+    state = 'waiting';
+    setStage('wait', 'Espere...', 'Não clique ainda');
+    const delay = 1200 + Math.random() * 2500;
+    timeoutId = setTimeout(() => {
+      state = 'go';
+      goTime = performance.now();
+      setStage('go', 'CLIQUE!', '');
+    }, delay);
+  }
+
+  function handleClick() {
+    if (state === 'idle') {
+      startRound();
+      return;
+    }
+    if (state === 'waiting') {
+      clearTimeout(timeoutId);
+      state = 'early';
+      setStage('early', 'Cedo demais!', 'Clique para tentar de novo');
+      return;
+    }
+    if (state === 'go') {
+      const reaction = Math.round(performance.now() - goTime);
+      scores.push(reaction);
+      saveScores();
+      render();
+      state = 'result';
+      const stageTextEl = stageText;
+      stage.className = 'stage idle';
+      stageTextEl.innerHTML = '';
+      const resultDiv = document.createElement('div');
+      resultDiv.className = 'result';
+      resultDiv.textContent = reaction + ' ms';
+      stageTextEl.appendChild(resultDiv);
+      stageSub.textContent = 'Clique para jogar de novo';
+      return;
+    }
+    if (state === 'early' || state === 'result') {
+      startRound();
+      return;
+    }
+  }
+
+  stage.addEventListener('click', handleClick);
+
+  resetBtn.addEventListener('click', () => {
+    scores = [];
+    saveScores();
+    render();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
